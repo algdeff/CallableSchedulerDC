@@ -1,0 +1,97 @@
+package SchedulerDC.Logic;
+
+import SchedulerDC.ServerStarter;
+import org.apache.commons.configuration2.XMLConfiguration;
+import org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder;
+import org.apache.commons.configuration2.builder.fluent.Configurations;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Iterator;
+import java.util.concurrent.ConcurrentHashMap;
+
+public final class ConfigManager {
+
+    /**
+     ConfigManager
+
+     Property keys from config file
+     default: schedulerdc.conf.xml
+     */
+
+    private static final String           CONFIG_FILE_PATH  = "schedulerdc.conf.xml",
+
+                                         REMOTE_SERVER_URL  =  "remote_server_url",
+                                        REMOTE_SERVER_PORT  =  "remote_server_port",
+                                             RECEIVED_PATH  =  "received_path",
+                                            OUTCOMING_PATH  =  "outcoming_path",
+                                                 SENT_PATH  =  "sent_path",
+                                             LOG_FILE_PATH  =  "log_file_path_name",
+                                          THREAD_POOL_SIZE  =  "thread_pool_size",
+                                       STATS_WRITE_INTERVAL  =  "stat_write_interval_sec",
+                                      OUTCOMING_TYPES_GLOB  =  "outcoming_file_type_glob";
+
+    private static final ConcurrentHashMap<String, String> _properties;
+
+    static {
+        Configurations configs = new Configurations();
+        _properties = new ConcurrentHashMap<>();
+        try {
+            FileBasedConfigurationBuilder<XMLConfiguration> builder = configs.xmlBuilder(CONFIG_FILE_PATH);
+            XMLConfiguration config = builder.getConfiguration();
+            Iterator<String> iterator = config.getKeys();
+            while (iterator.hasNext()) {
+                String propertyName = iterator.next();
+                System.err.println(propertyName + ": " + config.getString(propertyName));
+                _properties.put(propertyName, config.getString(propertyName));
+            }
+
+        } catch (Exception cex) {
+            System.err.println("Correct config file not found: " + CONFIG_FILE_PATH);
+            ServerStarter.stopAndExit(1);
+        }
+    }
+
+    private ConfigManager() {
+    }
+
+    public static void init() {
+    }
+
+    public static String getRemoteServerURL() {
+        return _properties.get(REMOTE_SERVER_URL);
+    }
+
+    public static int getRemoteServerPort() {
+        return Integer.parseInt(_properties.get(REMOTE_SERVER_PORT));
+    }
+
+    public static Path getReceivedPath() {
+        return Paths.get(_properties.get(RECEIVED_PATH));
+    }
+
+    public static Path getOutcomingPath() {
+        return Paths.get(_properties.get(OUTCOMING_PATH));
+    }
+
+    public static Path getSentPath() {
+        return Paths.get(_properties.get(SENT_PATH));
+    }
+
+    public static Path getLogFilePath() {
+        return Paths.get(_properties.get(LOG_FILE_PATH));
+    }
+
+    public static int getStatsWriteInterval() {
+        return Integer.parseInt(_properties.get(STATS_WRITE_INTERVAL));
+    }
+
+    public static int getThreadPoolSize() {
+        return Integer.parseInt(_properties.get(THREAD_POOL_SIZE));
+    }
+
+    public static String getOutcomingTypesGlob() {
+        return _properties.get(OUTCOMING_TYPES_GLOB);
+    }
+
+}
