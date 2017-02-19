@@ -1,15 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<xmlmonitor-configuration>
+<configuration>
     <!--URL удаленного сервера-->
     <remote_server_url>localhost</remote_server_url>
     <!--PORT удаленного сервера-->
     <remote_server_port>1904</remote_server_port>
-    <!--путь папки для загруженных файлов-->
-    <received_path>_received</received_path>
-    <!--путь папки для автоматической отправки файлов на удаленный сервер-->
-    <outcoming_path>_outcome</outcoming_path>
-    <!--путь папки для отправленных файлов-->
-    <sent_path>_sent</sent_path>
     <!--путь и имя LOG файла-->
     <log_file_path_name>result.log</log_file_path_name>
     <!--интервал записи статистики отправленных файлов-->
@@ -18,4 +12,4 @@
     <thread_pool_size>50</thread_pool_size>
     <!--маски автоматически отправляемых файлов-->
     <outcoming_file_type_glob>*.{dat,dca}</outcoming_file_type_glob>
-</xmlmonitor-configuration>
+</configuration>

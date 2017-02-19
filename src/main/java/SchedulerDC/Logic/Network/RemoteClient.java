@@ -1,30 +1,27 @@
 package SchedulerDC.Logic.Network;
 
 import static SchedulerDC.Facade.*;
-import SchedulerDC.Logic.ConfigManager;
 import SchedulerDC.Publisher.Interfaces.ISubscriber;
 import SchedulerDC.Publisher.Interfaces.IPublisherEvent;
 import SchedulerDC.Publisher.Publisher;
 import SchedulerDC.Publisher.PublisherEvent;
 import SchedulerDC.ServerStarter;
 
-import java.io.*;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+
+import java.io.*;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.Channels;
 
-import java.nio.file.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
 
 public class RemoteClient implements ISubscriber {
-
-    private Path _receivedPath;
-    private Path _outcomingPath;
-    private Path _sentPath;
 
     private String _clientID = null;
 
@@ -44,18 +41,12 @@ public class RemoteClient implements ISubscriber {
     private ObjectOutputStream _objectOutputStream;
     private ObjectInputStream _objectInputStream;
 
-    private List<FileContext> _serverFilesListCache;
-
 
     public RemoteClient(String remoteServerUrl, int remoteServerPort) {
         _remoteServerUrl = remoteServerUrl;
         _remoteServerPort = remoteServerPort;
-        _receivedPath = ConfigManager.getReceivedPath();
-        _outcomingPath = ConfigManager.getOutcomingPath();
-        _sentPath = ConfigManager.getSentPath();
         _clientControllerThreads = new ThreadGroup("clientControllerThreads");
         _outcomeEventsToServerQueue = new LinkedBlockingQueue<>(50);
-        _serverFilesListCache = new ArrayList<>();
         _clientSocketChannel = null;
     }
 
@@ -65,13 +56,9 @@ public class RemoteClient implements ISubscriber {
     }
 
     private void openConnectionToServer() {
-//        int threadsNumber = 10;
-//        ExecutorService executorService = Executors.newWorkStealingPool(threadsNumber); //ForkJoinPool.commonPool(); //Executors.newFixedThreadPool(50);
 
         try {
-//            InetSocketAddress  hostAddress = new InetSocketAddress(InetAddress.getByName(_remoteServerUrl),_remoteServerPort);
             SocketAddress hostAddress = new InetSocketAddress(InetAddress.getByName(_remoteServerUrl),_remoteServerPort);
-//            AsynchronousSocketChannel clientSocketChannel = AsynchronousSocketChannel.open(); //AsynchronousChannelGroup.withThreadPool(executorService));
 
             boolean isConnected = false;
             while (!isConnected) {
@@ -92,7 +79,7 @@ public class RemoteClient implements ISubscriber {
             message("Connected to server " + hostAddress);
 
             initOutcomeEventsToServerQueue();
-//            initTransitionEventSender();
+
             registerOnPublisher();
 
             InputStream inputStream = Channels.newInputStream(_clientSocketChannel);
@@ -101,11 +88,6 @@ public class RemoteClient implements ISubscriber {
             new Thread(new ServerEventMonitor()).start();
             new Thread(new ClientInterface()).start();
 
-//            clientSocketChannel.shutdownInput();
-//            clientSocketChannel.shutdownOutput();
-//            objectInputStream.close();
-//            objectOutputStream.close();
-//            clientSocketChannel.close();
         } catch (IOException e) {
             message("Server breakdown!");
             clientShutdown();
@@ -204,28 +186,6 @@ public class RemoteClient implements ISubscriber {
                     toLog(getClientID());
                     return;
                 }
-
-                case CMD_SERVER_ADD_FILES: {
-
-//                    System.err.println("Command: " + command);
-                    return;
-                }
-                case CMD_SERVER_GET_FILES: {
-//                    System.err.println("Command: " + command);
-                    saveServerFileToReceivedFolder((FileContext) eventFromServer.getBody());
-                    return;
-                }
-                case CMD_SERVER_GET_FILES_LIST: {
-//                    System.err.println("Command: " + command);
-                    _serverFilesListCache.clear();
-                    _serverFilesListCache.addAll((List<FileContext>) eventFromServer.getBody());
-                    showServerFilesList();
-                    showClientMenu();
-                    return;
-                }
-                case CMD_SERVER_REMOTE_PROCEDURE_CALL: {
-                    return;
-                }
                 case CMD_SERVER_TRANSITION_EVENT: {
                     publishTransitionEventFromServer(eventFromServer);
                     return;
@@ -249,39 +209,6 @@ public class RemoteClient implements ISubscriber {
 
     }
 
-    private void callRemoteProcedureOnServer(Runnable runnable) {
-        PublisherEvent procedureEvent = new PublisherEvent(CMD_SERVER_REMOTE_PROCEDURE_CALL, runnable).toServerCommand();
-        sendEventToServer(procedureEvent);
-    }
-
-
-    //=============================================================================================
-
-    private void saveServerFileToReceivedFolder(FileContext fileContext) {
-        Path filename = Paths.get(_receivedPath.toString(), fileContext.getFileName());
-
-        byte[] fileContent = fileContext.getFileContent();
-//            System.out.println("+++" + fileContent.length);
-
-        try {
-            Files.write(filename, fileContent, StandardOpenOption.CREATE);
-        } catch (IOException e) {
-            messageAndLog("Error in saveServerFileToReceivedFolder");
-            toLog(e.getMessage());
-        }
-
-        message("Done");
-    }
-
-    private void showServerFilesList() {
-
-        for (FileContext file : _serverFilesListCache) {
-            int index = _serverFilesListCache.indexOf(file);
-            file.setFileIndex(index);
-            message(String.format("%1$s: %2$s (%3$s KiB)", index, file.getFileName(), file.getFormattedSizeKb()));
-        }
-    }
-
     private void publishTransitionEventFromServer(PublisherEvent eventFromServer) {
         Publisher.getInstance().sendPublisherEvent(eventFromServer);
     }
@@ -296,14 +223,8 @@ public class RemoteClient implements ISubscriber {
         }
 
         message( "   You choice: \n" +
-                "1. Send file to server\n" +
-                "2. Receive file from server\n" +
-                "3. List server files\n" +
-                "4. List client files to send\n" +
-                "5. Run task factory\n" +
-                "6. Remote procedure call on server\n" +
-                "7. Transition event demo\n" +
-                "8. Terminate the program\n");
+                "1. Run task factory\n" +
+                "2. Terminate the program\n");
     }
 
     private class ClientInterface implements  Runnable {
@@ -324,35 +245,12 @@ public class RemoteClient implements ISubscriber {
                     String choice = stdin.readLine();
 
                     switch (choice) {
+
                         case "1": {
-                            selectAndSendFilesToServer();
+                            runTaskExecutor();
                             break;
                         }
                         case "2": {
-                            selectFilesToReceiveFromServer();
-                            break;
-                        }
-                        case "3": {
-                            listServerFiles();
-                            break;
-                        }
-                        case "4": {
-                            listClientFiles();
-                            break;
-                        }
-                        case "5": {
-                            runTaskFactory();
-                            break;
-                        }
-                        case "6": {
-                            callRemoteProcedure();
-                            break;
-                        }
-                        case "7": {
-                            transitionEventDemo();
-                            break;
-                        }
-                        case "8": {
                         }
                         clientShutdown();
                     }
@@ -366,157 +264,9 @@ public class RemoteClient implements ISubscriber {
 
         }
 
-        private void selectAndSendFilesToServer() {
-            List<FileContext> fileList = getClientOutcommingPathContent();
-
-            message("[SendFilesToServer]");
-            showClientFilesList(fileList);
-            message("Select file index to send it to the server: ");
-
-            BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in));
-            String choice = "";
-            try {
-                choice = stdin.readLine();
-            } catch (IOException e) {
-                toLog(e.getMessage());
-            }
-            int selectedIndex = Integer.parseInt(choice);
-
-            if (selectedIndex >= fileList.size() || selectedIndex < 0) {
-                message("Incorrect file index!");
-                return;
-            }
-
-            List<FileContext> selectedFiles = new ArrayList<>();
-            selectedFiles.add(fileList.get(selectedIndex));
-
-            sendSelectedFilesToServer(selectedFiles);
-
-        }
-
-        private void sendSelectedFilesToServer(List<FileContext> selectedFiles) {
-            for (FileContext fileContext : selectedFiles) {
-                sendFileToServer(fileContext);
-            }
-        }
-
-        private void sendFileToServer(FileContext fileContext) {
-            Path fileToSend = Paths.get(fileContext.getFileFullPath()).normalize();
-
-            if (!Files.exists(fileToSend)) {
-                message("File: " + fileToSend.toString() + " is not exist");
-                return;
-            }
-
-            byte[] fileContent = new byte[0];
-            try {
-                fileContent = Files.readAllBytes(fileToSend);
-            } catch (IOException e) {
-                toLog(e.getMessage());
-            }
-            long fileSize = fileContent.length;
-
-            fileContext.setFileSize(fileSize);
-            fileContext.setFileContent(fileContent);
-
-            PublisherEvent eventToClient = new PublisherEvent(CMD_SERVER_ADD_FILES, fileContext).toServerCommand();
-            sendEventToServer(eventToClient);
-
-            Publisher.getInstance().sendPublisherEvent(CMD_LOGGER_ADD_FILE_TO_STATISTICS, fileToSend.toString());
-
-        }
-
-
-        private void selectFilesToReceiveFromServer() {
-            message("[ReceiveFileFromServer]");
-            if (_serverFilesListCache.size() == 0) {
-                skipClientMenu();
-                listServerFiles();
-            } else {
-                showServerFilesList();
-            }
-
-            message("Select index of server file to receive it: ");
-            BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in));
-            String choice = "";
-            try {
-                choice = stdin.readLine();
-            } catch (IOException e) {
-                toLog(e.getMessage());
-            }
-            int selectedIndex = Integer.parseInt(choice);
-
-            if (selectedIndex >= _serverFilesListCache.size() || selectedIndex < 0) {
-                message("Incorrect file index!");
-                showClientMenu();
-                return;
-            }
-
-            List<FileContext> selectedFiles = new ArrayList<>();
-            selectedFiles.add(_serverFilesListCache.get(selectedIndex));
-
-            PublisherEvent eventToServer = new PublisherEvent(
-                    CMD_SERVER_GET_FILES, selectedFiles).toServerCommand();
-            sendEventToServer(eventToServer);
-
-        }
-
-        private void listServerFiles() {
-            message("[ListServerFiles]");
-            PublisherEvent eventToServer = new PublisherEvent(CMD_SERVER_GET_FILES_LIST).toServerCommand();
-            sendEventToServer(eventToServer);
-
-        }
-
-        private void listClientFiles() {
-            message("[ListClientFiles]");
-            showClientFilesList(getClientOutcommingPathContent());
-        }
-
-        private void runTaskFactory() {
+        private void runTaskExecutor() {
             Publisher.getInstance().sendPublisherEvent(CMD_TASK_EXECUTOR_START, getClientID());
 
-        }
-
-        private void callRemoteProcedure() {
-            message("[RemoteProcedureCall]");
-            callRemoteProcedureOnServer(new WebServiceExecutable(getClientID()));
-        }
-
-
-        private void showClientFilesList(List<FileContext> fileList) {
-            for (FileContext file : fileList) {
-                int index = fileList.indexOf(file);
-                message(String.format("%1$s: %2$s (%3$s KiB)", index, file.getFileName(), file.getFormattedSizeKb()));
-            }
-        }
-
-        private List<FileContext> getClientOutcommingPathContent() {
-            List<FileContext> fileList = new ArrayList<>();
-
-            try {
-                DirectoryStream<Path> directoryStream = Files.newDirectoryStream(
-                        _outcomingPath, ConfigManager.getOutcomingTypesGlob());
-                for (Path file : directoryStream) {
-                    if (!isCorrectFile(file)) continue;
-                    FileContext fileContext = new FileContext(file);
-                    fileContext.setFileSize(Files.size(file));
-                    fileList.add(fileContext);
-                }
-
-            } catch (IOException e) {
-                toLog(e.getMessage());
-            }
-
-            return fileList;
-        }
-
-        private boolean isCorrectFile(Path pathname) {
-            if (Files.isSymbolicLink(pathname)
-                    || !Files.isReadable(pathname)
-                    || Files.isDirectory(pathname)) return false;
-
-            return true;
         }
 
     }
@@ -567,7 +317,7 @@ public class RemoteClient implements ISubscriber {
     @Override
     public void listenerHandler(IPublisherEvent publisherEvent) {
         if (publisherEvent.getServerCommand().equals(CMD_SERVER_TRANSITION_EVENT)) {
-//            message("Send transition event to Server, type is: " + publisherEvent.getGroupName());
+            toLog("Send transition event to Server, type is: " + publisherEvent.getGroupName());
             sendEventToServer((PublisherEvent) publisherEvent);
             return;
         }
@@ -578,7 +328,6 @@ public class RemoteClient implements ISubscriber {
 
         switch (publisherEvent.getInterestName()) {
             case CMD_NET_CLIENT_UI_BREAK: {
-                message("CMD_NET_CLIENT_UI_BREAK " + publisherEvent.getBody());
                 _uiActive = false;
                 break;
             }

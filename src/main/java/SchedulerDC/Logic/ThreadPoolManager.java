@@ -1,10 +1,16 @@
 package SchedulerDC.Logic;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+
 import java.util.concurrent.*;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 public final class ThreadPoolManager {
+
+    private static final int SCHEDULER_THREADS = 10;
 
     private static ExecutorService _executorService;
     private static CompletionService _completionService;
@@ -29,7 +35,7 @@ public final class ThreadPoolManager {
         }
 
         _executorService = Executors.newWorkStealingPool(threadsNumber);
-        _scheduler = Executors.newScheduledThreadPool(1);
+        _scheduler = Executors.newScheduledThreadPool(SCHEDULER_THREADS);
         _completionService = new ExecutorCompletionService<>(_executorService);
 
         _inited = true;
@@ -57,7 +63,18 @@ public final class ThreadPoolManager {
         return  _scheduler.scheduleAtFixedRate(task, intervalSec, intervalSec, SECONDS);
     }
 
-    public ScheduledFuture<Object> scheduledCallable(Callable<Object> task, long intervalSec) {
+    public ScheduledFuture<Object> taskSchedulerService(LocalDateTime targetTime, Callable<Object> callableTask) {
+        ZonedDateTime zonedTargetTime = targetTime.atZone(ZoneId.systemDefault());
+
+        //time remaining, sec (for all time zones)
+        long timeRemainingSec = zonedTargetTime.toEpochSecond() - ZonedDateTime.now().toEpochSecond();
+        System.out.println(timeRemainingSec);
+
+        //run expired tasks instantly
+        return scheduledCallable(callableTask, timeRemainingSec > 0 ? timeRemainingSec : 0);
+    }
+
+    private ScheduledFuture<Object> scheduledCallable(Callable<Object> task, long intervalSec) {
         return  _scheduler.schedule(task, intervalSec, SECONDS);
     }
 

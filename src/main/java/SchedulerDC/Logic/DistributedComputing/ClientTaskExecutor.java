@@ -8,7 +8,9 @@ import SchedulerDC.Publisher.Publisher;
 import SchedulerDC.Publisher.PublisherEvent;
 import SchedulerDC.ServerStarter;
 
+import java.time.LocalDateTime;
 import java.util.List;
+
 import java.util.concurrent.*;
 
 /**
@@ -77,6 +79,20 @@ public class ClientTaskExecutor implements ISubscriber {
     }
 
     private void addIncomingTasks(List<IRemoteTaskEntity> incomingTasks) {
+
+        //сообщение о поступивших задачах и времени выполнения
+        messageLog(incomingTasks.size() + " tasks accepted from server:");
+        for (IRemoteTaskEntity incomingTask : incomingTasks) {
+            if (incomingTask.getTaskType().equals(IRemoteTaskEntity.TASK_TYPE_SCHEDULED)) {
+                LocalDateTime targetTime = ((ScheduledTaskEntity) incomingTask).getTargetTime();
+                long timeRemainSec = ((ScheduledTaskEntity) incomingTask).getTimeRemainSec();
+
+                messageLog("Scheduled task (" + incomingTask.getTaskName() + ") | "
+                        + targetTime + ", time remain, sec: " + timeRemainSec);
+            } else {
+                messageLog("Instant task (" + incomingTask.getTaskName() + ")");
+            }
+        }
 
         //парсим задачи по типу и добавляем в очередь на выполнение
         for (IRemoteTaskEntity incomingTask : incomingTasks) {
